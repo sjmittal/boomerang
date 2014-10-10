@@ -41,6 +41,7 @@ BOOMR_start = new Date().getTime();
  it.
  */
 function BOOMR_check_doc_domain(domain) {
+	/*eslint no-unused-vars:0*/
 	var test;
 
 	// If domain is not passed in, then this is a global call
@@ -49,20 +50,20 @@ function BOOMR_check_doc_domain(domain) {
 	if(!domain) {
 		// If we're running in the main window, then we don't need this
 		if(window.parent === window || !document.getElementById("boomr-if-as")) {
-			return true;	// nothing to do
+			return;// true;	// nothing to do
 		}
 
 		domain = document.domain;
 	}
 
 	if(domain.indexOf(".") === -1) {
-		return false;	// not okay, but we did our best
+		return;// false;	// not okay, but we did our best
 	}
 
 	// 1. Test without setting document.domain
 	try {
 		test = window.parent.document;
-		return test !== undefined;	// all okay
+		return;// test !== undefined;	// all okay
 	}
 	// 2. Test with document.domain
 	catch(err) {
@@ -70,14 +71,14 @@ function BOOMR_check_doc_domain(domain) {
 	}
 	try {
 		test = window.parent.document;
-		return test !== undefined;	// all okay
+		return;// test !== undefined;	// all okay
 	}
 	// 3. Strip off leading part and try again
 	catch(err) {
 		domain = domain.replace(/^[\w\-]+\./, "");
 	}
 
-	return BOOMR_check_doc_domain(domain);
+	BOOMR_check_doc_domain(domain);
 }
 
 BOOMR_check_doc_domain();
@@ -87,7 +88,7 @@ BOOMR_check_doc_domain();
 // the parameter is the window
 (function(w) {
 
-var impl, boomr, d, myurl, createCustomEvent;
+var impl, boomr, d, myurl, createCustomEvent, dispatchEvent;
 
 // This is the only block where we use document without the w. qualifier
 if(w.parent !== w
@@ -100,9 +101,7 @@ if(w.parent !== w
 d = w.document;
 
 // Short namespace because I don't want to keep typing BOOMERANG
-if(w.BOOMR === undefined) {
-	w.BOOMR = {};
-}
+if(!w.BOOMR) { w.BOOMR = {}; }
 BOOMR = w.BOOMR;
 // don't allow this code to be included twice
 if(BOOMR.version) {
@@ -111,6 +110,8 @@ if(BOOMR.version) {
 
 BOOMR.version = "0.9";
 BOOMR.window = w;
+
+if (!BOOMR.plugins) { BOOMR.plugins = {}; }
 
 // CustomEvent proxy for IE9 & 10 from https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent
 (function() {
@@ -153,21 +154,21 @@ BOOMR.window = w;
 	}
 }());
 
-function dispatchEvent(e_name, e_data) {
+dispatchEvent = function(e_name, e_data) {
 	var ev = createCustomEvent(e_name, {"detail": e_data});
 	if (!ev) {
 		return;
 	}
 
 	BOOMR.setImmediate(function() {
-		if (d.dispatchEvent) {
+		if(d.dispatchEvent) {
 			d.dispatchEvent(ev);
 		}
 		else if(d.fireEvent) {
 			d.fireEvent("onpropertychange", ev);
 		}
 	});
-}
+};
 
 // impl is a private object not reachable from outside the BOOMR object
 // users can set properties by passing in to the init() method
@@ -217,37 +218,27 @@ impl = {
 
 	disabled_plugins: {},
 
-	onclick_handler: function(ev) {
-		var target;
-		if (!ev) { ev = w.event; }
-		if (ev.target) { target = ev.target; }
-		else if (ev.srcElement) { target = ev.srcElement; }
-		if (target.nodeType === 3) {// defeat Safari bug
-			target = target.parentNode;
-		}
+	xb_handler: function(type) {
+		return function(ev) {
+			var target;
+			if (!ev) { ev = w.event; }
+			if (ev.target) { target = ev.target; }
+			else if (ev.srcElement) { target = ev.srcElement; }
+			if (target.nodeType === 3) {// defeat Safari bug
+				target = target.parentNode;
+			}
 
-		// don't capture clicks on flash objects
-		// because of context slowdowns in PepperFlash
-		if(target && target.nodeName.toUpperCase() === "OBJECT" && target.type === "application/x-shockwave-flash") {
-			return;
-		}
-		impl.fireEvent("click", target);
-	},
-
-	onsubmit_handler: function(ev) {
-		var target;
-		if (!ev) { ev = w.event; }
-		if (ev.target) { target = ev.target; }
-		else if (ev.srcElement) { target = ev.srcElement; }
-		if (target.nodeType === 3) {// defeat Safari bug
-			target = target.parentNode;
-		}
-
-		impl.fireEvent("form_submit", target);
+			// don't capture events on flash objects
+			// because of context slowdowns in PepperFlash
+			if(target && target.nodeName.toUpperCase() === "OBJECT" && target.type === "application/x-shockwave-flash") {
+				return;
+			}
+			impl.fireEvent(type, target);
+		};
 	},
 
 	fireEvent: function(e_name, data) {
-		var i, handler, ev;
+		var i, handler, handlers;
 
 		e_name = e_name.toLowerCase();
 
@@ -259,11 +250,11 @@ impl = {
 			dispatchEvent(this.public_events[e_name], data);
 		}
 
-		ev = this.events[e_name];
+		handlers = this.events[e_name];
 
-		for(i=0; i<ev.length; i++) {
+		for(i=0; i<handlers.length; i++) {
 			try {
-				handler = ev[i];
+				handler = handlers[i];
 				handler.fn.call(handler.scope, data, handler.cb_data);
 			}
 			catch(err) {
@@ -567,7 +558,7 @@ boomr = {
 			this.log = config.log;
 		}
 		if(!this.log) {
-			this.log = function(/* m,l,s */) { return; };
+			this.log = function(/* m,l,s */) {};
 		}
 
 		for(k in this.plugins) {
@@ -592,7 +583,7 @@ boomr = {
 						this.plugins[k].init(config);
 					}
 					catch(err) {
-						BOOMR.addError(err, this.plugins[k] + ".init");
+						BOOMR.addError(err, k + ".init");
 					}
 				}
 			}
@@ -636,11 +627,11 @@ boomr = {
 				boomr.utils.addListener(d, "visibilitychange", fire_visible);
 			}
 
-			boomr.utils.addListener(d, "mouseup", impl.onclick_handler);
+			boomr.utils.addListener(d, "mouseup", impl.xb_handler("click"));
 
 			forms = d.getElementsByTagName("form");
 			for(iterator = 0; iterator < forms.length; iterator++) {
-				boomr.utils.addListener(forms[iterator], "submit", impl.onsubmit_handler);
+				boomr.utils.addListener(forms[iterator], "submit", impl.xb_handler("form_submit"));
 			}
 
 			if(!w.onpagehide && w.onpagehide !== null) {
