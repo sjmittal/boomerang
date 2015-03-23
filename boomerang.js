@@ -19,7 +19,7 @@ you, but we have a few ideas.
 /*eslint-env browser*/
 /*global BOOMR:true, BOOMR_start:true, BOOMR_lstart:true, console:false*/
 /*eslint no-mixed-spaces-and-tabs:[2, true], console:0, camelcase:0, strict:0, quotes:[2, "double", "avoid-escape"], new-cap:0*/
-/*eslint space-infix-ops:0, no-console:0, no-delete-var:0, no-space-before-semi:0*/
+/*eslint space-infix-ops:0, no-console:0, no-delete-var:0, no-space-before-semi:0, no-multi-spaces:1, space-unary-ops: 0, key-spacing: 0, dot-notation: [2, {"allowKeywords": false }]*/
 
 // Measure the time the script started
 // This has to be global so that we don't wait for the entire
@@ -88,7 +88,7 @@ BOOMR_check_doc_domain();
 // the parameter is the window
 (function(w) {
 
-var impl, boomr, d, myurl, createCustomEvent, dispatchEvent;
+var impl, boomr, d, myurl, createCustomEvent, dispatchEvent, visibilityState, visibilityChange;
 
 // This is the only block where we use document without the w. qualifier
 if(w.parent !== w
@@ -154,21 +154,61 @@ if (!BOOMR.plugins) { BOOMR.plugins = {}; }
 	}
 }());
 
-dispatchEvent = function(e_name, e_data) {
+/**
+ dispatch a custom event to the browser
+ @param e_name	The custom event name that consumers can subscribe to
+ @param e_data	Any data passed to subscribers of the custom event via the `event.detail` property
+ @param async	By default, custom events are dispatched immediately.
+		Set to true if the event should be dispatched once the browser has finished its current
+		JavaScript execution.
+ */
+dispatchEvent = function(e_name, e_data, async) {
 	var ev = createCustomEvent(e_name, {"detail": e_data});
 	if (!ev) {
 		return;
 	}
 
-	BOOMR.setImmediate(function() {
+	function dispatch() {
 		if(d.dispatchEvent) {
 			d.dispatchEvent(ev);
 		}
 		else if(d.fireEvent) {
 			d.fireEvent("onpropertychange", ev);
 		}
-	});
+	}
+
+	if(async) {
+		BOOMR.setImmediate(dispatch);
+	}
+	else {
+		dispatch();
+	}
 };
+
+// visibilitychange is useful to detect if the page loaded through prerender
+// or if the page never became visible
+// http://www.w3.org/TR/2011/WD-page-visibility-20110602/
+// http://www.nczonline.net/blog/2011/08/09/introduction-to-the-page-visibility-api/
+// https://developer.mozilla.org/en-US/docs/Web/Guide/User_experience/Using_the_Page_Visibility_API
+
+// Set the name of the hidden property and the change event for visibility
+if (typeof document.hidden !== "undefined") { // Opera 12.10 and Firefox 18 and later support
+	visibilityState = "visibilityState";
+	visibilityChange = "visibilitychange";
+}
+else if (typeof document.mozHidden !== "undefined") {
+	visibilityState = "mozVisibilityState";
+	visibilityChange = "mozvisibilitychange";
+}
+else if (typeof document.msHidden !== "undefined") {
+	visibilityState = "msVisibilityState";
+	visibilityChange = "msvisibilitychange";
+}
+else if (typeof document.webkitHidden !== "undefined") {
+	visibilityState = "webkitVisibilityState";
+	visibilityChange = "webkitvisibilitychange";
+}
+
 
 // impl is a private object not reachable from outside the BOOMR object
 // users can set properties by passing in to the init() method
@@ -197,6 +237,7 @@ impl = {
 	events: {
 		"page_ready": [],
 		"page_unload": [],
+		"before_unload": [],
 		"dom_loaded": [],
 		"visibility_changed": [],
 		"before_beacon": [],
@@ -258,7 +299,7 @@ impl = {
 				handler.fn.call(handler.scope, data, handler.cb_data);
 			}
 			catch(err) {
-				BOOMR.addError(err, "fireEvent." + e_name);
+				BOOMR.addError(err, "fireEvent." + e_name + "<" + i + ">");
 			}
 		}
 
@@ -304,7 +345,12 @@ boomr = {
 						);
 					}
 					else {
-						value.push(encodeURIComponent(o[k]));
+						if (separator === "&") {
+							value.push(encodeURIComponent(o[k]));
+						}
+						else {
+							value.push(o[k]);
+						}
 					}
 				}
 				separator = ",";
@@ -322,7 +368,12 @@ boomr = {
 							);
 						}
 						else {
-							value.push(encodeURIComponent(k) + "=" + encodeURIComponent(o[k]));
+							if (separator === "&") {
+								value.push(encodeURIComponent(k) + "=" + encodeURIComponent(o[k]));
+							}
+							else {
+								value.push(k + "=" + o[k]);
+							}
 						}
 					}
 				}
@@ -431,6 +482,10 @@ boomr = {
 			if(!url) {
 				return url;
 			}
+			if(!url.match) {
+				BOOMR.addError("TypeError: Not a string", "hashQueryString", typeof url);
+				return "";
+			}
 			if(url.match(/^\/\//)) {
 				url = location.protocol + url;
 			}
@@ -464,6 +519,76 @@ boomr = {
 			return (props>0);
 		},
 
+		/**
+		 Add a MutationObserver for a given element and terminate after `timeout`ms.
+		 @param el		DOM element to watch for mutations
+		 @param config		MutationObserverInit object (https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationObserverInit)
+		 @param timeout		Number of milliseconds of no mutations after which the observer should be automatically disconnected
+					If set to a falsy value, the observer will wait indefinitely for Mutations.
+		 @param callback	Callback function to call either on timeout or if mutations are detected.  The signature of this method is:
+						function(mutations, callback_data)
+					Where:
+						mutations is the list of mutations detected by the observer or `undefined` if the observer timed out
+						callback_data is the passed in `callback_data` parameter without modifications
+
+					The callback function may return a falsy value to disconnect the observer after it returns, or a truthy value to
+					keep watching for mutations. If the return value is numeric and greater than 0, then this will be the new timeout
+					if it is boolean instead, then the timeout will not fire any more so the caller MUST call disconnect() at some point
+		 @param callback_data	Any data to be passed to the callback function as its second parameter
+		 @param callback_ctx	An object that represents the `this` object of the `callback` method.  Leave unset the callback function is not a method of an object
+
+		 @returns	- `null` if a MutationObserver could not be created OR
+				- An object containing the observer and the timer object:
+				  { observer: <MutationObserver>, timer: <Timeout Timer if any> }
+
+				The caller can use this to disconnect the observer at any point by calling `retval.observer.disconnect()`
+				Note that the caller should first check to see if `retval.observer` is set before calling `disconnect()` as it may
+				have been cleared automatically.
+		 */
+		addObserver: function(el, config, timeout, callback, callback_data, callback_ctx) {
+			var o = {observer: null, timer: null};
+
+			if(!window.MutationObserver || !callback || !el) {
+				return null;
+			}
+
+			function done(mutations) {
+				var run_again=false;
+
+				if(o.timer) {
+					clearTimeout(o.timer);
+					o.timer = null;
+				}
+
+				if(callback) {
+					run_again = callback.call(callback_ctx, mutations, callback_data);
+
+					if(!run_again) {
+						callback = null;
+					}
+				}
+
+				if(!run_again && o.observer) {
+					o.observer.disconnect();
+					o.observer = null;
+				}
+
+				if(typeof run_again === "number" && run_again > 0) {
+					o.timer = setTimeout(done, run_again);
+				}
+			}
+
+			o.observer = new MutationObserver(done);
+
+			if(timeout) {
+				o.timer = setTimeout(done, o.timeout);
+			}
+
+			o.observer.observe(el, config);
+
+			return o;
+		},
+
 		addListener: function(el, type, fn) {
 			if (el.addEventListener) {
 				el.addEventListener(type, fn, false);
@@ -480,67 +605,101 @@ boomr = {
 			}
 		},
 
-		pushVars: function (arr, vars, prefix) {
-			var k, i, n=0;
+		pushVars: function (form, vars, prefix) {
+			var k, i, l=0, input;
 
 			for(k in vars) {
 				if(vars.hasOwnProperty(k)) {
 					if(Object.prototype.toString.call(vars[k]) === "[object Array]") {
 						for(i = 0; i < vars[k].length; ++i) {
-							n += BOOMR.utils.pushVars(arr, vars[k][i], k + "[" + i + "]");
+							l += BOOMR.utils.pushVars(form, vars[k][i], k + "[" + i + "]");
 						}
 					} else {
-						++n;
-						arr.push(
-							encodeURIComponent(prefix ? (prefix + "[" + k + "]") : k)
-							+ "="
-							+ (vars[k]===undefined || vars[k]===null ? "" : encodeURIComponent(vars[k]))
-						);
+						input = document.createElement("input");
+						input.type = "hidden";	// we need `hidden` to preserve newlines. see commit message for more details
+						input.name = (prefix ? (prefix + "[" + k + "]") : k);
+						input.value = (vars[k]===undefined || vars[k]===null ? "" : vars[k]);
+
+						form.appendChild(input);
+
+						l += encodeURIComponent(input.name).length + encodeURIComponent(input.value).length + 2;
 					}
 				}
 			}
 
-			return n;
+			return l;
 		},
 
-		postData: function (urlenc) {
-			var iframe = document.createElement("iframe"),
-				form = document.createElement("form"),
-				input = document.createElement("input");
+		sendData: function (form, method) {
+			var input  = document.createElement("input"),
+			    urls = [ impl.beacon_url ];
 
-			iframe.name = "boomerang_post";
-			iframe.style.display = form.style.display = "none";
+			form.method = method;
+			form.id = "beacon_form";
 
-			form.method = "POST";
-			form.action = impl.beacon_url;
-			form.target = iframe.name;
-
-			input.name = "data";
-
-			if (window.JSON) {
-				form.enctype = "text/plain";
-				input.value = JSON.stringify(impl.vars);
-			} else {
+			// TODO: Determine if we want to send as JSON
+			//if (window.JSON) {
+			//	form.innerHTML = "";
+			//	form.enctype = "text/plain";
+			//	input.name = "data";
+			//	input.value = JSON.stringify(impl.vars);
+			//	form.appendChild(input);
+			//} else {
 				form.enctype = "application/x-www-form-urlencoded";
-				input.value = urlenc;
+			//}
+
+			if(impl.secondary_beacons && impl.secondary_beacons.length) {
+				urls.push.apply(urls, impl.secondary_beacons);
 			}
 
-			document.body.appendChild(iframe);
-			form.appendChild(input);
-			document.body.appendChild(form);
 
-			BOOMR.utils.addListener(iframe, "load", function() {
-				document.body.removeChild(form);
-				document.body.removeChild(iframe);
-			});
+			function remove(id) {
+				var el = document.getElementById(id);
+				if (el) {
+					el.parentNode.removeChild(el);
+				}
+			}
 
-			form.submit();
+			function submit() {
+				/*eslint-disable no-script-url*/
+				var iframe,
+				    name = "boomerang_post-" + encodeURIComponent(form.action) + "-" + Math.random();
+
+				// ref: http://terminalapp.net/submitting-a-form-with-target-set-to-a-script-generated-iframe-on-ie/
+				try {
+					iframe = document.createElement('<iframe name="' + name + '">');	// IE <= 8
+				}
+				catch (ignore) {
+					iframe = document.createElement("iframe");				// everything else
+				}
+
+				form.action = urls.shift();
+				form.target = iframe.name = iframe.id = name;
+				iframe.style.display = form.style.display = "none";
+				iframe.src="javascript:false";
+
+				remove(iframe.id);
+				remove(form.id);
+
+				document.body.appendChild(iframe);
+				document.body.appendChild(form);
+
+				form.submit();
+
+				if (urls.length) {
+					BOOMR.setImmediate(submit);
+				}
+
+				setTimeout(function() { remove(iframe.id); }, 10000);
+			}
+
+			submit();
 		}
 	},
 
 	init: function(config) {
 		var i, k,
-		    properties = ["beacon_url", "beacon_type", "site_domain", "user_ip", "strip_query_string"];
+		    properties = ["beacon_url", "beacon_type", "site_domain", "user_ip", "strip_query_string", "secondary_beacons"];
 
 		BOOMR_check_doc_domain();
 
@@ -572,8 +731,18 @@ boomr = {
 					continue;
 				}
 
-				// plugin was previously disabled but is now enabled
+				// plugin was previously disabled
 				if(impl.disabled_plugins[k]) {
+
+					// and has not been explicitly re-enabled
+					if( !config[k]
+						|| !config[k].hasOwnProperty("enabled")
+						|| config[k].enabled !== true
+					) {
+						continue;
+					}
+
+					// plugin is now enabled
 					delete impl.disabled_plugins[k];
 				}
 
@@ -596,42 +765,37 @@ boomr = {
 		// The developer can override onload by setting autorun to false
 		if(!impl.onloadfired && (config.autorun === undefined || config.autorun !== false)) {
 			if(d.readyState && d.readyState === "complete") {
+				BOOMR.loadedLate = true;
 				this.setImmediate(BOOMR.page_ready, null, null, BOOMR);
 			}
 			else {
 				if(w.onpagehide || w.onpagehide === null) {
-					boomr.utils.addListener(w, "pageshow", BOOMR.page_ready);
+					BOOMR.utils.addListener(w, "pageshow", BOOMR.page_ready);
 				}
 				else {
-					boomr.utils.addListener(w, "load", BOOMR.page_ready);
+					BOOMR.utils.addListener(w, "load", BOOMR.page_ready);
 				}
 			}
 		}
 
-		boomr.utils.addListener(w, "DOMContentLoaded", function() { impl.fireEvent("dom_loaded"); });
+		BOOMR.utils.addListener(w, "DOMContentLoaded", function() { impl.fireEvent("dom_loaded"); });
 
 		(function() {
-			var fire_visible, forms, iterator;
-			// visibilitychange is useful to detect if the page loaded through prerender
-			// or if the page never became visible
-			// http://www.w3.org/TR/2011/WD-page-visibility-20110602/
-			// http://www.nczonline.net/blog/2011/08/09/introduction-to-the-page-visibility-api/
-			fire_visible = function() { impl.fireEvent("visibility_changed"); };
-			if(d.webkitVisibilityState) {
-				boomr.utils.addListener(d, "webkitvisibilitychange", fire_visible);
-			}
-			else if(d.msVisibilityState) {
-				boomr.utils.addListener(d, "msvisibilitychange", fire_visible);
-			}
-			else if(d.visibilityState) {
-				boomr.utils.addListener(d, "visibilitychange", fire_visible);
+			var forms, iterator;
+			if(visibilityChange !== undefined) {
+				BOOMR.utils.addListener(d, visibilityChange, function() { impl.fireEvent("visibility_changed"); });
+
+				// record the last time each visibility state occurred
+				BOOMR.subscribe("visibility_changed", function() {
+					BOOMR.lastVisibilityEvent[BOOMR.visibilityState()] = BOOMR.now();
+				});
 			}
 
-			boomr.utils.addListener(d, "mouseup", impl.xb_handler("click"));
+			BOOMR.utils.addListener(d, "mouseup", impl.xb_handler("click"));
 
 			forms = d.getElementsByTagName("form");
 			for(iterator = 0; iterator < forms.length; iterator++) {
-				boomr.utils.addListener(forms[iterator], "submit", impl.xb_handler("form_submit"));
+				BOOMR.utils.addListener(forms[iterator], "submit", impl.xb_handler("form_submit"));
 			}
 
 			if(!w.onpagehide && w.onpagehide !== null) {
@@ -639,7 +803,7 @@ boomr = {
 				// We only clear w on browsers that don't support onpagehide because
 				// those that do are new enough to not have memory leak problems of
 				// some older browsers
-				boomr.utils.addListener(w, "unload", function() { BOOMR.window=w=null; });
+				BOOMR.utils.addListener(w, "unload", function() { BOOMR.window=w=null; });
 			}
 		}());
 
@@ -683,6 +847,22 @@ boomr = {
 		}
 	},
 
+	now: (function() {
+		try {
+			if("performance" in window && window.performance && window.performance.now) {
+				return function() {
+					return Math.round(window.performance.now() + window.performance.timing.navigationStart);
+				};
+			}
+		}
+		catch(ignore) { }
+		return Date.now || function() { return new Date().getTime(); };
+	}()),
+
+	visibilityState: ( visibilityState === undefined ? function() { return "visible"; } : function() { return d[visibilityState]; } ),
+
+	lastVisibilityEvent: {},
+
 	subscribe: function(e_name, fn, cb_data, cb_scope) {
 		var i, handler, ev, unload_handler;
 
@@ -697,7 +877,7 @@ boomr = {
 		// don't allow a handler to be attached more than once to the same event
 		for(i=0; i<ev.length; i++) {
 			handler = ev[i];
-			if(handler.fn === fn && handler.cb_data === cb_data && handler.scope === cb_scope) {
+			if(handler && handler.fn === fn && handler.cb_data === cb_data && handler.scope === cb_scope) {
 				return this;
 			}
 		}
@@ -714,32 +894,43 @@ boomr = {
 		// onbeforeunload is the right event to fire, but all browsers don't
 		// support it.  This allows us to fall back to onunload when onbeforeunload
 		// isn't implemented
-		if(e_name === "page_unload") {
-			unload_handler = function(ev) {
+		if(e_name === "page_unload" || e_name === "before_unload") {
+			unload_handler = function(evt) {
 							if(fn) {
-								fn.call(cb_scope, ev || w.event, cb_data);
+								fn.call(cb_scope, evt || w.event, cb_data);
 							}
 						};
-			// pagehide is for iOS devices
-			// see http://www.webkit.org/blog/516/webkit-page-cache-ii-the-unload-event/
-			if(w.onpagehide || w.onpagehide === null) {
-				boomr.utils.addListener(w, "pagehide", unload_handler);
+
+			if(e_name === "page_unload") {
+				// pagehide is for iOS devices
+				// see http://www.webkit.org/blog/516/webkit-page-cache-ii-the-unload-event/
+				if(w.onpagehide || w.onpagehide === null) {
+					BOOMR.utils.addListener(w, "pagehide", unload_handler);
+				}
+				else {
+					BOOMR.utils.addListener(w, "unload", unload_handler);
+				}
 			}
-			else {
-				boomr.utils.addListener(w, "unload", unload_handler);
-			}
-			boomr.utils.addListener(w, "beforeunload", unload_handler);
+			BOOMR.utils.addListener(w, "beforeunload", unload_handler);
 		}
 
 		return this;
 	},
 
-	addError: function(err, src) {
+	addError: function(err, src, extra) {
+		var str;
 		if (typeof err !== "string") {
-			err = String(err);
+			str = String(err);
+			if(str.match(/^\[object/)) {
+				str = err.name + ": " + (err.description || err.message).replace(/\r\n$/, "");
+			}
+			err = str;
 		}
 		if (src !== undefined) {
-			err = "[" + src + ":" + (new Date().getTime()) + "] " + err;
+			err = "[" + src + ":" + BOOMR.now() + "] " + err;
+		}
+		if (extra) {
+			err += ":: " + extra;
 		}
 
 		if (impl.errors[err]) {
@@ -788,8 +979,12 @@ boomr = {
 		return this;
 	},
 
+	hasVar: function(name) {
+		return impl.vars.hasOwnProperty(name);
+	},
+
 	requestStart: function(name) {
-		var t_start = new Date().getTime();
+		var t_start = BOOMR.now();
 		BOOMR.plugins.RT.startTimer("xhr_" + name, t_start);
 
 		return {
@@ -800,15 +995,20 @@ boomr = {
 	},
 
 	responseEnd: function(name, t_start, data) {
-		BOOMR.plugins.RT.startTimer("xhr_" + name, t_start);
-		impl.fireEvent("xhr_load", {
-			"name": "xhr_" + name,
-			"data": data
-		});
+		if(typeof name === "object" && name.url) {
+			impl.fireEvent("xhr_load", name);
+		}
+		else {
+			BOOMR.plugins.RT.startTimer("xhr_" + name, t_start);
+			impl.fireEvent("xhr_load", {
+				"name": "xhr_" + name,
+				"data": data
+			});
+		}
 	},
 
 	sendBeacon: function() {
-		var k, data, url, img, nparams, errors=[];
+		var k, form, furl, img, length, errors=[];
 
 		BOOMR.debug("Checking if we can send beacon");
 
@@ -827,9 +1027,28 @@ boomr = {
 			}
 		}
 
-		impl.vars.v = BOOMR.version;
 		// use d.URL instead of location.href because of a safari bug
-		impl.vars.u = BOOMR.utils.cleanupURL(d.URL.replace(/#.*/, ""));
+		impl.vars.pgu = BOOMR.utils.cleanupURL(d.URL.replace(/#.*/, ""));
+		if(!impl.vars.u) {
+			impl.vars.u = impl.vars.pgu;
+		}
+
+		if(impl.vars.pgu === impl.vars.u) {
+			delete impl.vars.pgu;
+		}
+
+		impl.vars.v = BOOMR.version;
+
+		if(BOOMR.visibilityState()) {
+			impl.vars["vis.st"] = BOOMR.visibilityState();
+			if(BOOMR.lastVisibilityEvent.visible) {
+				impl.vars["vis.lv"] = BOOMR.now() - BOOMR.lastVisibilityEvent.visible;
+			}
+			if(BOOMR.lastVisibilityEvent.hidden) {
+				impl.vars["vis.lh"] = BOOMR.now() - BOOMR.lastVisibilityEvent.hidden;
+			}
+		}
+
 		if(w !== window) {
 			impl.vars["if"] = "";
 		}
@@ -852,41 +1071,26 @@ boomr = {
 		// Don't send a beacon if no beacon_url has been set
 		// you would do this if you want to do some fancy beacon handling
 		// in the `before_beacon` event instead of a simple GET request
+		BOOMR.debug("Ready to send beacon: " + BOOMR.utils.objectToString(impl.vars));
 		if(!impl.beacon_url) {
-			BOOMR.debug("No beacon_url, but would have sent: " + BOOMR.utils.objectToString(impl.vars));
+			BOOMR.debug("No beacon URL, so skipping.");
 			return true;
 		}
 
-		data = [];
-		nparams = BOOMR.utils.pushVars(data, impl.vars);
+		form = document.createElement("form");
+		length = BOOMR.utils.pushVars(form, impl.vars);
 
 		// If we reach here, we've transferred all vars to the beacon URL.
-		this.setImmediate(impl.fireEvent, "onbeacon", impl.vars, impl);
+		impl.fireEvent("onbeacon", impl.vars);
 
-		if(!nparams) {
+		if(!length) {
 			// do not make the request if there is no data
 			return this;
 		}
 
-		data = data.join("&");
-
-		if(impl.beacon_type === "POST") {
-			BOOMR.utils.postData(data);
-		} else {
-			// if there are already url parameters in the beacon url,
-			// change the first parameter prefix for the boomerang url parameters to &
-			url = impl.beacon_url + ((impl.beacon_url.indexOf("?") > -1)?"&":"?") + data;
-
-			// using 2000 here as a de facto maximum URL length based on:
-			// http://stackoverflow.com/questions/417142/what-is-the-maximum-length-of-a-url-in-different-browsers
-			if(url.length > 2000 && impl.beacon_type === "AUTO") {
-				BOOMR.utils.postData(data);
-			} else {
-				BOOMR.debug("Sending url: " + url.replace(/&/g, "\n\t"));
-				img = new Image();
-				img.src=url;
-			}
-		}
+		// using 2000 here as a de facto maximum URL length based on:
+		// http://stackoverflow.com/questions/417142/what-is-the-maximum-length-of-a-url-in-different-browsers
+		BOOMR.utils.sendData(form, impl.beacon_type === "AUTO" ? (length > 2000 ? "POST" : "GET") : "POST");
 
 		return true;
 	}
@@ -906,14 +1110,8 @@ else if(typeof BOOMR.window.BOOMR_lstart === "number") {
 (function() {
 	var make_logger;
 
-	if(w.YAHOO && w.YAHOO.widget && w.YAHOO.widget.Logger) {
-		boomr.log = w.YAHOO.log;
-	}
-	else if(w.Y && w.Y.log) {
-		boomr.log = w.Y.log;
-	}
-	else if(typeof console === "object" && console.log !== undefined) {
-		boomr.log = function(m,l,s) { console.log(s + ": [" + l + "] " + m); };
+	if(typeof console === "object" && console.log !== undefined) {
+		boomr.log = function(m, l, s) { console.log(s + ": [" + l + "] " + m); };
 	}
 
 	make_logger = function(l) {
@@ -937,15 +1135,15 @@ for(ident in boomr) {
 		BOOMR[ident] = boomr[ident];
 	}
 }
+if (!BOOMR.xhr_excludes) {
+	//! URLs to exclude from automatic XHR instrumentation
+	BOOMR.xhr_excludes={};
+}
+
 }());
 
-BOOMR.plugins = BOOMR.plugins || {};
-
-dispatchEvent("onBoomerangLoaded", { "BOOMR": BOOMR } );
+dispatchEvent("onBoomerangLoaded", { "BOOMR": BOOMR }, true );
 
 }(window));
 
 // end of boomerang beaconing section
-
-
-

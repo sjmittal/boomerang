@@ -21,11 +21,86 @@ if (BOOMR.plugins.NavigationTiming) {
 // A private object to encapsulate all your implementation details
 var impl = {
 	complete: false,
+	xhr_done: function(edata) {
+		var w = BOOMR.window, res, data = {}, k;
+
+		if (!edata) {
+			return;
+		}
+
+		if (edata.data) {
+			edata = edata.data;
+		}
+
+		if (edata.url && w.performance && w.performance.getEntriesByName) {
+			res = w.performance.getEntriesByName(edata.url);
+			if(res && res.length > 0) {
+				res = res[0];
+
+				data = {
+					nt_red_st: res.redirectStart,
+					nt_red_end: res.redirectEnd,
+					nt_fet_st: res.fetchStart,
+					nt_dns_st: res.domainLookupStart,
+					nt_dns_end: res.domainLookupEnd,
+					nt_con_st: res.connectStart,
+					nt_con_end: res.connectEnd,
+					nt_req_st: res.requestStart,
+					nt_res_st: res.responseStart,
+					nt_res_end: res.responseEnd
+				};
+				if (res.secureConnectionStart) {
+					// secureConnectionStart is OPTIONAL in the spec
+					data.nt_ssl_st = res.secureConnectionStart;
+				}
+
+				for(k in data) {
+					if (data.hasOwnProperty(k) && data[k]) {
+						data[k] += w.performance.timing.navigationStart;
+					}
+				}
+
+			}
+		}
+
+		if (edata.timing) {
+			res = edata.timing;
+			if (!data.nt_req_st) {
+				data.nt_req_st = res.requestStart;
+			}
+			if (!data.nt_res_st) {
+				data.nt_res_st = res.responseStart;
+			}
+			if (!data.nt_res_end) {
+				data.nt_res_end = res.responseEnd;
+			}
+			data.nt_domint = res.domInteractive;
+			data.nt_domcomp = res.domComplete;
+			data.nt_load_st = res.loadEventEnd;
+			data.nt_load_end = res.loadEventEnd;
+		}
+
+		for(k in data) {
+			if (data.hasOwnProperty(k) && !data[k]) {
+				delete data[k];
+			}
+		}
+
+		BOOMR.addVar(data);
+
+		try { impl.addedVars.push.apply(impl.addedVars, Object.keys(data)); } catch(ignore) {}
+
+		this.complete = true;
+		BOOMR.sendBeacon();
+	},
+
 	done: function() {
 		var w = BOOMR.window, p, pn, pt, data;
 		if(this.complete) {
 			return this;
 		}
+
+		impl.addedVars = [];
 
 		p = w.performance || w.msPerformance || w.webkitPerformance || w.mozPerformance;
 		if(p && p.timing && p.navigation) {
@@ -66,6 +141,8 @@ var impl = {
 			}
 
 			BOOMR.addVar(data);
+
+			try { impl.addedVars.push.apply(impl.addedVars, Object.keys(data)); } catch(ignore) {}
 		}
 
 		// XXX Inconsistency warning.  msFirstPaint above is in milliseconds while
@@ -81,19 +158,35 @@ var impl = {
 				};
 
 				BOOMR.addVar(data);
+
+				try { impl.addedVars.push.apply(impl.addedVars, Object.keys(data)); } catch(ignore) {}
 			}
 		}
 
 		this.complete = true;
 		BOOMR.sendBeacon();
+	},
+
+	clear: function(vars) {
+		if (impl.addedVars && impl.addedVars.length > 0) {
+			BOOMR.removeVar(impl.addedVars);
+			impl.addedVars = [];
+		}
+		this.complete = false;
 	}
 };
 
 BOOMR.plugins.NavigationTiming = {
 	init: function() {
-		// we'll fire on whichever happens first
-		BOOMR.subscribe("page_ready", impl.done, null, impl);
-		BOOMR.subscribe("page_unload", impl.done, null, impl);
+		if (!impl.initialized) {
+			// we'll fire on whichever happens first
+			BOOMR.subscribe("page_ready", impl.done, null, impl);
+			BOOMR.subscribe("xhr_load", impl.xhr_done, null, impl);
+			BOOMR.subscribe("before_unload", impl.done, null, impl);
+			BOOMR.subscribe("onbeacon", impl.clear, null, impl);
+
+			impl.initialized = true;
+		}
 		return this;
 	},
 

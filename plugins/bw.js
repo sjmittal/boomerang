@@ -24,14 +24,19 @@ if(BOOMR.plugins.BW) {
 // bytes respectively
 // See https://spreadsheets.google.com/ccc?key=0AplxPyCzmQi6dDRBN2JEd190N1hhV1N5cHQtUVdBMUE&hl=en_GB
 // for a spreadsheet with the details
+//
+// The images were generated with ImageMagic, using random uncompressed data.
+// As input data (image-3.bin) I used the original images that were encrypted using AES256.
+// The IM command used was : convert -size 618x618 -depth 8 gray:image-3.bin image-3.png
+// Vary the image dimensions to change the filesize. The image dimensions are more or less the square of the desired filesize.
 images=[
-	{ name: "image-0.png", size: 11483, timeout: 1400 },
-	{ name: "image-1.png", size: 40658, timeout: 1200 },
-	{ name: "image-2.png", size: 164897, timeout: 1300 },
-	{ name: "image-3.png", size: 381756, timeout: 1500 },
-	{ name: "image-4.png", size: 1234664, timeout: 1200 },
-	{ name: "image-5.png", size: 4509613, timeout: 1200 },
-	{ name: "image-6.png", size: 9084559, timeout: 1200 }
+	{ name: "image-0.png", size: 11773, timeout: 1400 },
+	{ name: "image-1.png", size: 40836, timeout: 1200 },
+	{ name: "image-2.png", size: 165544, timeout: 1300 },
+	{ name: "image-3.png", size: 382946, timeout: 1500 },
+	{ name: "image-4.png", size: 1236278, timeout: 1200 },
+	{ name: "image-5.png", size: 4511798, timeout: 1200 },
+	{ name: "image-6.png", size: 9092136, timeout: 1200 }
 ];
 
 images.end = images.length;
@@ -50,6 +55,7 @@ impl = {
 	nruns: 5,
 	latency_runs: 10,
 	user_ip: "",
+	block_beacon: false,
 	test_https: false,
 	cookie_exp: 7*86400,
 	cookie: "BA",
@@ -82,7 +88,7 @@ impl = {
 		fw = (q3-q1)*1.5;
 
 		// fw === 0 => all items are identical, so no need to filter
-		if (fw === 0) {
+		if(fw === 0) {
 			return a;
 		}
 
@@ -229,7 +235,7 @@ impl = {
 				(bandwidths[Math.floor(n/2)] + bandwidths[Math.ceil(n/2)]) / 2
 			);
 
-		if (bandwidths_corrected.length < 1) {
+		if(bandwidths_corrected.length < 1) {
 			BOOMR.debug("not enough valid corrected datapoints, falling back to uncorrected", "bw");
 			debug_info.push("l==" + bandwidths_corrected.length);
 
@@ -273,7 +279,7 @@ impl = {
 	load_img: function(i, run, callback)
 	{
 		var url = this.base_url + images[i].name
-			+ "?t=" + (new Date().getTime()) + Math.random(),	// Math.random() is slow, but we get it before we start the timer
+			+ "?t=" + BOOMR.now() + Math.random(),	// Math.random() is slow, but we get it before we start the timer
 		    timer=0, tstart=0,
 		    img = new Image(),
 		    that=this;
@@ -284,7 +290,7 @@ impl = {
 					callback.call(that, i, tstart, run, value);
 				}
 
-				if (value !== null) {
+				if(value !== null) {
 					img.onload=img.onerror=null;
 					img=null;
 					clearTimeout(timer);
@@ -303,7 +309,7 @@ impl = {
 		// happens on the first image.  If it didn't, we'd have nothing to measure.
 		timer=setTimeout(handler(null), images[i].timeout + Math.min(400, this.latency ? this.latency.mean : 400));
 
-		tstart = new Date().getTime();
+		tstart = BOOMR.now();
 		img.src=url;
 	},
 
@@ -314,7 +320,7 @@ impl = {
 		}
 
 		if(success !== null) {
-			var lat = new Date().getTime() - tstart;
+			var lat = BOOMR.now() - tstart;
 			this.latencies.push(lat);
 		}
 		// we've got all the latency images at this point,
@@ -344,7 +350,7 @@ impl = {
 
 		var result = {
 				start: tstart,
-				end: new Date().getTime(),
+				end: BOOMR.now(),
 				t: null,
 				state: success,
 				run: run
@@ -381,7 +387,7 @@ impl = {
 				bw_err:		parseFloat(bw.stderr_corrected, 10),
 				lat:		this.latency.mean,
 				lat_err:	parseFloat(this.latency.stderr, 10),
-				bw_time:	Math.round(new Date().getTime()/1000)
+				bw_time:	Math.round(BOOMR.now()/1000)
 			};
 
 		BOOMR.addVar(o);
@@ -406,7 +412,11 @@ impl = {
 		}
 
 		this.complete = true;
-		BOOMR.sendBeacon();
+
+		if(this.block_beacon === true) {
+			BOOMR.sendBeacon();
+		}
+
 		this.running = false;
 	},
 
@@ -431,7 +441,7 @@ impl = {
 
 		cookies = BOOMR.utils.getSubCookies(BOOMR.utils.getCookie(impl.cookie));
 
-		if (cookies && cookies.ba) {
+		if(cookies && cookies.ba) {
 
 			ba = parseInt(cookies.ba, 10);
 			bw_e = parseFloat(cookies.be, 10);
@@ -445,7 +455,7 @@ impl = {
 			// on DHCP with the same ISP may get different IPs on the same subnet
 			// every time they log in
 
-			t_now = Math.round((new Date().getTime())/1000);	// seconds
+			t_now = Math.round(BOOMR.now()/1000);	// seconds
 
 			// If the subnet changes or the cookie is more than 7 days old,
 			// then we recheck the bandwidth, else we just use what's in the cookie
@@ -475,7 +485,7 @@ BOOMR.plugins.BW = {
 		}
 
 		BOOMR.utils.pluginConfig(impl, config, "BW",
-						["base_url", "timeout", "nruns", "cookie", "cookie_exp", "test_https"]);
+						["base_url", "timeout", "nruns", "cookie", "cookie_exp", "test_https", "block_beacon"]);
 
 		if(config && config.user_ip) {
 			impl.user_ip = config.user_ip;
@@ -497,7 +507,6 @@ BOOMR.plugins.BW = {
 
 		if(!impl.setVarsFromCookie()) {
 			BOOMR.subscribe("page_ready", this.run, null, this);
-			BOOMR.subscribe("page_unload", this.skip, null, this);
 		}
 
 		impl.initialized = true;
@@ -506,11 +515,16 @@ BOOMR.plugins.BW = {
 	},
 
 	run: function() {
+		var a;
 		if(impl.running || impl.complete) {
 			return this;
 		}
 
-		if( !impl.test_https && BOOMR.window.location.protocol === "https:") {
+		// Turn image url into an absolute url if it isn't already
+		a = document.createElement("a");
+		a.href = impl.base_url;
+
+		if( !impl.test_https && a.protocol === "https:") {
 			// we don't run the test for https because SSL stuff will mess up b/w
 			// calculations we could run the test itself over HTTP, but then IE
 			// will complain about insecure resources, so the best is to just bail
@@ -518,10 +532,15 @@ BOOMR.plugins.BW = {
 
 			BOOMR.info("HTTPS detected, skipping bandwidth test", "bw");
 			impl.complete = true;
-			BOOMR.sendBeacon();
+
+			if(impl.block_beacon === true) {
+				BOOMR.sendBeacon();
+			}
+
 			return this;
 		}
 
+		impl.base_url = a.href;
 		impl.running = true;
 
 		setTimeout(this.abort, impl.timeout);
@@ -533,27 +552,21 @@ BOOMR.plugins.BW = {
 
 	abort: function() {
 		impl.aborted = true;
-		if (impl.running) {
+		if(impl.running) {
 			impl.finish();	// we don't defer this call because it might be called from
 					// onunload and we want the entire chain to complete
 					// before we return
 		}
 	},
 
-	skip: function() {
-		// this is called on unload, so we should abort the test
-
-		// it's also possible that we didn't start, so sendBeacon never
-		// gets called.  Let's set our complete state and call sendBeacon.
-		// This happens if onunload fires before onload
-
-		if(!impl.complete) {
-			impl.complete = true;
-			BOOMR.sendBeacon();
+	is_complete: function() {
+		if(impl.block_beacon === true) {
+			return impl.complete;
 		}
-	},
-
-	is_complete: function() { return impl.complete; }
+		else {
+			return true;
+		}
+	}
 };
 
 }());
