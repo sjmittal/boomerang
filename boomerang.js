@@ -242,7 +242,7 @@ BOOMR_check_doc_domain();
 		// beacon request method, either GET, POST or AUTO. AUTO will check the
 		// request size then use GET if the request URL is less than MAX_GET_LENGTH chars
 		// otherwise it will fall back to a POST request.
-		beacon_type: "AUTO",
+		//beacon_type: "AUTO", Always POST
 		//  beacon authorization key value.  Most systems will use the 'Authentication' keyword, but some
 		//  some services use keys like 'X-Auth-Token' or other custom keys
 		beacon_auth_key: "Authorization",
@@ -287,16 +287,6 @@ BOOMR_check_doc_domain();
 		},
 
 		vars: {},
-
-		/**
-		 * Variable priority lists:
-		 * -1 = first
-		 *  1 = last
-		 */
-		varPriority: {
-			"-1": {},
-			"1": {}
-		},
 
 		errors: {},
 
@@ -716,22 +706,33 @@ BOOMR_check_doc_domain();
 			pushVars: function(form, vars, prefix) {
 				var k, i, l = 0, input;
 
-				for (k in vars) {
-					if (vars.hasOwnProperty(k)) {
-						if (Object.prototype.toString.call(vars[k]) === "[object Array]") {
-							for (i = 0; i < vars[k].length; ++i) {
-								l += BOOMR.utils.pushVars(form, vars[k][i], k + "[" + i + "]");
+				if (window.JSON) {
+					//send the whole beacon data as a POST json request
+					form.innerHTML = "";
+					input  = document.createElement("input");
+					input.name = "data";
+					input.value = JSON.stringify(impl.vars);
+					form.appendChild(input);
+					l = input.value.length;
+				} else {
+
+					for (k in vars) {
+						if (vars.hasOwnProperty(k)) {
+							if (Object.prototype.toString.call(vars[k]) === "[object Array]") {
+								for (i = 0; i < vars[k].length; ++i) {
+									l += BOOMR.utils.pushVars(form, vars[k][i], k + "[" + i + "]");
+								}
 							}
-						}
-						else {
-							input = document.createElement("input");
-							input.type = "hidden";	// we need `hidden` to preserve newlines. see commit message for more details
-							input.name = (prefix ? (prefix + "[" + k + "]") : k);
-							input.value = (vars[k] === undefined || vars[k] === null ? "" : vars[k]);
+							else {
+								input = document.createElement("input");
+								input.type = "hidden";	// we need `hidden` to preserve newlines. see commit message for more details
+								input.name = (prefix ? (prefix + "[" + k + "]") : k);
+								input.value = (vars[k] === undefined || vars[k] === null ? "" : vars[k]);
 
-							form.appendChild(input);
+								form.appendChild(input);
 
-							l += encodeURIComponent(input.name).length + encodeURIComponent(input.value).length + 2;
+								l += encodeURIComponent(input.name).length + encodeURIComponent(input.value).length + 2;
+							}
 						}
 					}
 				}
@@ -1245,25 +1246,6 @@ BOOMR_check_doc_domain();
 			return impl.vars.hasOwnProperty(name);
 		},
 
-		/**
-		 * Sets a variable's priority in the beacon URL.
-		 * -1 = beginning of the URL
-		 * 0  = middle of the URL (default)
-		 * 1  = end of the URL
-		 *
-		 * @param {string} name Variable name
-		 * @param {number} pri Priority (-1 or 1)
-		 */
-		setVarPriority: function(name, pri) {
-			if (typeof pri !== "number" || Math.abs(pri) !== 1) {
-				return this;
-			}
-
-			impl.varPriority[pri][name] = 1;
-
-			return this;
-		},
-
 		requestStart: function(name) {
 			var t_start = BOOMR.now();
 			BOOMR.plugins.RT.startTimer("xhr_" + name, t_start);
@@ -1370,9 +1352,8 @@ BOOMR_check_doc_domain();
 		},
 
 		real_sendBeacon: function() {
-			var k, form, url, img, errors = [], params = [], paramsJoined, useImg = 1,
-			    varsSent = {}, varsToSend = {}, urlFirst = [], urlLast = [],
-			    xhr;
+			var k, form, url, errors = [], length, 
+			    varsSent = {}, varsToSend = {};
 
 			if (!impl.beaconQueued) {
 				return false;
@@ -1460,11 +1441,6 @@ BOOMR_check_doc_domain();
 				return true;
 			}
 
-			//
-			// Try to send an IMG beacon if possible (which is the most compatible),
-			// otherwise send an XHR beacon if the  URL length is longer than 2,000 bytes.
-			//
-
 			// clone the vars object for two reasons: first, so all listeners of
 			// onbeacon get an exact clone (in case listeners are doing
 			// BOOMR.removeVar), and second, to help build our priority list of vars.
@@ -1475,23 +1451,9 @@ BOOMR_check_doc_domain();
 				}
 			}
 
-			// get high- and low-priority variables first, which remove any of
-			// those vars from varsToSend
-			urlFirst = this.getVarsOfPriority(varsToSend, -1);
-			urlLast  = this.getVarsOfPriority(varsToSend, 1);
-
-			// merge the 3 lists
-			params = urlFirst.concat(this.getVarsOfPriority(varsToSend, 0), urlLast);
-			paramsJoined = params.join("&");
-
-			// if there are already url parameters in the beacon url,
-			// change the first parameter prefix for the boomerang url parameters to &
-			url = impl.beacon_url + ((impl.beacon_url.indexOf("?") > -1) ? "&" : "?") + paramsJoined;
-
-			if (impl.beacon_type === "POST" || url.length > BOOMR.constants.MAX_GET_LENGTH) {
-				// switch to a XHR beacon if the the user has specified a POST OR GET length is too long
-				useImg = false;
-			}
+			//Always send POST
+			form = document.createElement("form");
+			length = BOOMR.utils.pushVars(form, varsToSend);
 
 			BOOMR.removeVar("qt");
 
@@ -1499,104 +1461,75 @@ BOOMR_check_doc_domain();
 			// The only thing that can stop it now is if we're rate limited
 			impl.fireEvent("onbeacon", varsSent);
 
-			if (params.length === 0) {
+			if (!length) {
 				// do not make the request if there is no data
 				return this;
 			}
 
-			if (!BOOMR.orig_XMLHttpRequest && (!BOOMR.window || !BOOMR.window.XMLHttpRequest)) {
-				// if we don't have XHR available, force an image beacon and hope
-				// for the best
-				useImg = true;
-			}
-
-			if (useImg) {
-				img = new Image();
-				img.src = url;
-
-				if (impl.secondary_beacons) {
-					for (k = 0; k < impl.secondary_beacons.length; k++) {
-						url = impl.secondary_beacons[k] + "?" + paramsJoined;
-
-						img = new Image();
-						img.src = url;
-					}
-				}
-			}
-			else {
-				// Send a form-encoded XHR POST beacon
-				xhr = new (BOOMR.orig_XMLHttpRequest || BOOMR.window.XMLHttpRequest)();
-				xhr.open("POST", impl.beacon_url);
-				xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-				if (typeof impl.beacon_auth_token !== "undefined") {
-					if (typeof impl.beacon_auth_key === "undefined") {
-						impl.beacon_auth_key = "Authorization";
-					}
-					xhr.setRequestHeader(impl.beacon_auth_key, impl.beacon_auth_token);
-				}
-				xhr.send(paramsJoined);
-			}
+			BOOMR.sendData(form, "POST");		
 
 			return true;
 		},
+		
+		sendData: function (form, method) {
+			var urls = [ impl.beacon_url ];
 
-		/**
-		 * Gets all variables of the specified priority
-		 *
-		 * @param {object} vars Variables (will be modified for pri -1 and 1)
-		 * @param {number} pri Priority (-1, 0, or 1)
-		 *
-		 * @return {string[]} Array of URI-encoded vars
-		 */
-		getVarsOfPriority: function(vars, pri) {
-			var name, url = [];
+			form.method = method;
+			form.id = "beacon_form";
 
-			if (pri !== 0) {
-				// if we were given a priority, iterate over that list
-				for (name in impl.varPriority[pri]) {
-					if (impl.varPriority[pri].hasOwnProperty(name)) {
-						// if this var is set, add it to our URL array
-						if (vars.hasOwnProperty(name)) {
-							url.push(this.getUriEncodedVar(name, vars[name]));
-
-							// remove this name from vars so it isn't also added
-							// to the non-prioritized list when pri=0 is called
-							delete vars[name];
-						}
-					}
-				}
+			// TODO: Determine if we want to send as JSON
+			if (window.JSON) {
+				form.enctype = "text/plain";
+			} else {
+				form.enctype = "application/x-www-form-urlencoded";
 			}
-			else {
-				// if we weren't given a priority, iterate over all of the vars
-				// that are left (from not being removed via earlier pri -1 or 1)
-				for (name in vars) {
-					if (vars.hasOwnProperty(name)) {
-						url.push(this.getUriEncodedVar(name, vars[name]));
-					}
+
+			if(impl.secondary_beacons && impl.secondary_beacons.length) {
+				urls.push.apply(urls, impl.secondary_beacons);
+			}
+
+
+			function remove(id) {
+				var el = document.getElementById(id);
+				if (el) {
+					el.parentNode.removeChild(el);
 				}
 			}
 
-			return url;
-		},
+			function submit() {
+				/*eslint-disable no-script-url*/
+				var iframe,
+				    name = "boomerang_post-" + encodeURIComponent(form.action) + "-" + Math.random();
 
-		/**
-		 * Gets a URI-encoded name/value pair.
-		 *
-		 * @param {string} name Name
-		 * @param {string} value Value
-		 *
-		 * @returns {string} URI-encoded string
-		 */
-		getUriEncodedVar: function(name, value) {
-			var result = encodeURIComponent(name)
-				+ "="
-				+ (
-					value === undefined || value === null
-					? ""
-					: encodeURIComponent(value)
-				);
+				// ref: http://terminalapp.net/submitting-a-form-with-target-set-to-a-script-generated-iframe-on-ie/
+				try {
+					iframe = document.createElement('<iframe name="' + name + '">');	// IE <= 8
+				}
+				catch (ignore) {
+					iframe = document.createElement("iframe");				// everything else
+				}
 
-			return result;
+				form.action = urls.shift();
+				form.target = iframe.name = iframe.id = name;
+				iframe.style.display = form.style.display = "none";
+				iframe.src="javascript:false";
+
+				remove(iframe.id);
+				remove(form.id);
+
+				document.body.appendChild(iframe);
+				document.body.appendChild(form);
+
+				form.submit();
+
+				if (urls.length) {
+					BOOMR.setImmediate(submit);
+				}
+
+				setTimeout(function() { remove(iframe.id); }, 10000);
+			}
+
+			submit();
 		},
 
 		/**
