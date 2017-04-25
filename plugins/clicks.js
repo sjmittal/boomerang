@@ -51,10 +51,10 @@ A plugin beaconing clicked elements back to the server
     accept: function(node) {
       var tagName = node.element.toUpperCase();
       var classList = node["class"];
-      if(click_tags.indexOf(tagName) > -1) {
+      if(this.click_tags.indexOf(tagName) > -1) {
         for (var i = 0; i < classList.length; i++) {
           var className = classList[i];
-          if(click_classes.indexOf(className) > -1) {
+          if(this.click_classes.indexOf(className) > -1) {
             return className;
           }
         }
@@ -71,16 +71,20 @@ A plugin beaconing clicked elements back to the server
       } else 	{	
         BOOMR.sendBeacon();
       }
-		}
-
+		},
+    clear: function() {
+      BOOMR.removeVar("class", "text", "element", "id");
+    }
 	};
 
 	BOOMR.plugins.clicks = {
 		init: function(config) {
-			var properties = ["click_url"];	  // URL to beacon
+			var properties = ["click_url", "click_tags", "click_classes"];	  // URL to beacon
 
 			// This block is only needed if you actually have user configurable properties
 			BOOMR.utils.pluginConfig(impl, config, "clicks", properties);
+      
+      BOOMR.subscribe("onbeacon", impl.clear, null, impl);
 
 			// Other initialisation code here
 			w.addEventListener("click", impl.handleEvent, true);

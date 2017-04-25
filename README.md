@@ -19,18 +19,6 @@ init() method.
 usage
 ---
 
-## The simple synchronous way
-
-```html
-<script src="boomerang/boomerang.js"></script>
-<script src="boomerang/plugins/rt.js"></script>
-<script>
-   BOOMR.init({
-       beacon_url: "/boomerang_handler"
-   });
-</script>
-```
-
 **Note** - you must include at least one plugin (it doesn't have to be rt) or else the beacon will never actually be called.
 
 ## The faster, more involved, asynchronous way
@@ -57,35 +45,34 @@ The build process picks up all the plugins referenced in the `plugins.json` file
 grunt clean build
 ```
 
+Note since we load a single bommerang js file including the last plugin say `zzz_init.js`, this last plugin must hold all the client specific code to initialize the boomerang.
+This includes setting of `beacon_url` property and other client specific plugin configs. Also any event handlers like `before_beacon` etc. must be defined to handle client specific logic before sending the beacon.
+To include a client specific one can build using 
+```bash
+grunt clean build --target=<path/to/<zzz_init.js>
+```
+This way client script is included in the main boomerang.js in the end and one can build for multiple targeted clients.
+client specifc javascript may be part of a different repository.
+
 This creates deployable boomerang versions in the `build` directory, e.g. `build/boomerang-<version>.min.js`.
 
-Install this file on your web server or origin server where your CDN can pick it up.  Set a far future max-age header for it.  This file will never change.
+Install this file on your web server or origin server where your CDN can pick it up.
 
 ### 3. Asynchronously include the script on your page
 
-#### 3.1. Adding it to the main document
-Include the following code at the *top* of your HTML document:
-```html
-<script>
-(function(d, s) {
-   var js = d.createElement(s),
-       sc = d.getElementsByTagName(s)[0];
+#### Adding it via an iframe
 
-   js.src="http://your-cdn.host.com/path/to/boomerang-<version>.js";
-   sc.parentNode.insertBefore(js, sc);
-}(document, "script"));
-</script>
-```
+This fork and future plugins are designed to use only this way to load the boomerang javascript.
+The method of adding it to the main document will still block `onload` on most browsers (Internet Explorer not included).  To avoid
+blocking `onload`, we could load boomerang in an iframe.  
 
-Yes, the best practices say to include scripts at the bottom.  That's different.  That's for scripts that block downloading of other resources.  Including a script this
+note: 
+Yes, even the best practices say to include scripts at the bottom of the main document will block <code>onload</code>.  That's for scripts that block downloading of other resources.  Including a script this
 way will not block other resources, however it _will_ block <code>onload</code>.  Including the script at the top of your page gives it a good chance of loading
 before the rest of your page does thereby reducing the probability of it blocking the `onload` event.  If you don't want to block `onload` either, follow Stoyan's
 <a href="http://www.phpied.com/non-onload-blocking-async-js/">advice from the Meebo team</a>.
 
-#### 3.2. Adding it via an iframe
-
-The method described in 3.1 will still block `onload` on most browsers (Internet Explorer not included).  To avoid
-blocking `onload`, we could load boomerang in an iframe.  Stoyan's <a href="http://www.phpied.com/non-onload-blocking-async-js/">documented
+Stoyan's <a href="http://www.phpied.com/non-onload-blocking-async-js/">documented
 the technique on his blog</a>.  We've modified it to work across browsers with different configurations, documented on
 <a href="http://www.lognormal.com/blog/2012/12/12/the-script-loader-pattern/">the lognormal blog</a>.
 

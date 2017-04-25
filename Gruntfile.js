@@ -18,6 +18,7 @@ var TEST_BUILD_PATH = path.join("tests", "build");
 var TEST_RESULTS_PATH = path.join("tests", "results");
 var TEST_DEBUG_PORT = 4002;
 var TEST_URL_BASE = grunt.option("test-url") || "http://localhost:4002";
+var target = grunt.option('target');
 
 //
 // Grunt config
@@ -37,6 +38,9 @@ module.exports = function() {
 	var plugins = grunt.file.readJSON("plugins.json");
 	src.push(plugins.plugins);
 	src.push(path.join(pluginsDir, "zzz-last-plugin.js"));
+  if(target) {
+    src.push(target);
+  }
 
 	//
 	// Ensure env.json exists
