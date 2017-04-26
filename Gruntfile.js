@@ -34,6 +34,10 @@ module.exports = function() {
 	// Determine source files:
 	//  boomerang.js and plugins/*.js order
 	//
+  var repo = undefined;
+  if(grunt.file.exists("repo.json")) {
+    repo = grunt.file.readJSON("repo.json");
+  }
 	var src = [ "boomerang.js" ];
 	var plugins = grunt.file.readJSON("plugins.json");
 	src.push(plugins.plugins);
@@ -122,6 +126,11 @@ module.exports = function() {
 		//
 		// Tasks
 		//
+    gitclone: {
+        clone: {
+            options: repo
+        }
+    },
 		concat: {
 			options: {
 				stripBanners: false,
@@ -680,6 +689,7 @@ module.exports = function() {
 	grunt.loadNpmTasks("grunt-saucelabs");
 	grunt.loadNpmTasks("grunt-strip-code");
 	grunt.loadNpmTasks("grunt-contrib-watch");
+  grunt.loadNpmTasks("grunt-git");
 	grunt.loadNpmTasks("grunt-jsdoc");
 
 	// tasks/*.js
@@ -758,6 +768,11 @@ module.exports = function() {
 		"test:matrix:unit:debug": ["saucelabs-mocha:unit-debug"]
 	};
 
+  if(repo) {
+    aliases['build'].unshift('gitclone');
+    aliases['build:test'].unshift('gitclone');
+  }
+  
 	function isAlias(task) {
 		return aliases[task] ? true : false;
 	}

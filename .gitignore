@@ -1,5 +1,6 @@
 *.gz
 *.swp
+repo.json
 /boomerang-*.js
 build/*
 *.log

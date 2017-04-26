@@ -1,0 +1,5 @@
+{
+    "repository": "https://github.com/you/your-git-repo.git",
+    "branch": "master",
+    "directory": "build/repo"
+}

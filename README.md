@@ -53,6 +53,21 @@ grunt clean build --target=<path/to/<zzz_init.js>
 ```
 This way client script is included in the main boomerang.js in the end and one can build for multiple targeted clients.
 client specifc javascript may be part of a different repository.
+Same repository can be included in your build process by copying `repo.json.example` to `repo.json`
+
+Change the contents to your repo you wish to include. Note the git client you would be using to clone this repo should be accessible to the user settings running the grunt.
+```
+{
+    "repository": "https://github.com/you/your-git-repo.git",
+    "branch": "master",
+    "directory": "build/repo"
+}
+```
+
+Ensure directory to clone is inside `build` folder so it can be cleaned for fresh clone if needed.
+Hence after adding right content inside `repo.json`
+one can build the entire boomerang (now including the client specific script using command)
+`grunt clean build --target=<build/repo/zzz_init.js' (if `zzz_init.js` was that file in your external reo to init and configure the boomerang.)
 
 This creates deployable boomerang versions in the `build` directory, e.g. `build/boomerang-<version>.min.js`.
 
