@@ -56,7 +56,9 @@ client specifc javascript may be part of a different repository.
 Same repository can be included in your build process by copying `repo.json.example` to `repo.json`
 
 Change the contents to your repo you wish to include. 
-Note the git client you would be using to clone this repo should be accessible via the user running the grunt command.
+Note the git client you would be using to clone this repo should be accessible via the grunt command.
+One needs to ensure (private) repo is accessible to the user and `~/.ssh` directory should contain the public SSH key.
+Read more on this: https://help.github.com/articles/checking-for-existing-ssh-keys/
 ```
 {
     "repository": "https://github.com/you/your-git-repo.git",
@@ -126,7 +128,7 @@ The `id` of the script node created by this code MUST be `boomr-if-as` as boomer
 
 Boomerang will still export the `BOOMR` object to the parent window if running inside an iframe, so the rest of your code should remain unchanged.
 
-#### 3.3. Identifying when boomerang has loaded
+#### Identifying when boomerang has loaded
 
 If you load boomerang asynchronously, there's some uncertainty in when boomerang has completed loading.  To get around this, you can subscribe to the
 `onBoomerangLoaded` Custom Event on the `document` object:
