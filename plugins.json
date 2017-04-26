@@ -5,6 +5,8 @@
         "plugins/rt.js",
         "plugins/navtiming.js",
         "plugins/clicks.js",
+        "plugins/form-data-collect-plugin.js",
+        "plugins/jquery-element-data-plugin.js",
         "plugins/mobile.js",
         "plugins/memory.js",
         "plugins/cache-reload.js",
