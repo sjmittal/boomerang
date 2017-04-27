@@ -38,7 +38,7 @@ A plugin which collects html element data before beconing to the server
             } else {
               var data = uno.text();
             }
-            if(data !== undefined) {
+            if(data) {
               if(obj.dataType == 'number') {
                 data = getAmt(data);
               }

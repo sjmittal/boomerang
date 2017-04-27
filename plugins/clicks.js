@@ -42,10 +42,10 @@ A plugin beaconing clicked elements back to the server
 
 			if(foundClass) {
 				BOOMR.info(target.nodeName + " clicked, will send immediately");
-        data["class"] = foundClass;
-        data["text"] =  target.innerText || target.value;
-        if(data["text"])
+        data["text"] =  target.innerText || target.value || target.alt || target.src;
+        if(data["text"]) {
           impl.sendData(data);
+        }
       }
 		},
     accept: function(node) {

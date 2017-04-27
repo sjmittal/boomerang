@@ -35,7 +35,10 @@ A plugin which serializes form data into fd attribute and adds to the beacon dat
         case 'number':
         case 'date':
         case 'hidden':
-          q[name] = form.elements[i].value;
+          var value = form.elements[i].value;
+          if(value) {
+            q[name] = value;
+          }
           break;
         case 'checkbox':
         case 'radio':
@@ -54,7 +57,10 @@ A plugin which serializes form data into fd attribute and adds to the beacon dat
       case 'SELECT':
         switch (form.elements[i].type) {
         case 'select-one':
-          q[name] = form.elements[i].value;
+          var value = form.elements[i].value;
+          if(value) {
+            q[name] = value;
+          }
           break;
         case 'select-multiple':
           q[name] = [];
