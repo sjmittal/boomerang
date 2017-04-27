@@ -9,7 +9,6 @@
         "plugins/jquery-element-data-plugin.js",
         "plugins/mobile.js",
         "plugins/memory.js",
-        "plugins/cache-reload.js",
         "plugins/compression.js",
         "plugins/errors.js"
     ]
