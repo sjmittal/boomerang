@@ -41,21 +41,21 @@ A plugin which collects html element data before beconing to the server
           if(jQuery && typeof jQuery === "function") {
             for(var x in impl.selectors) {
               var obj = impl.selectors[x];
-              var selectors = obj.selector;
-              if(!jQuery.isArray(selector)) {
-                  selectors = [selector];
+              if(!jQuery.isArray(obj)) {
+                  obj = [obj];
               }
-              for(var selector in selectors) {
-                  var elems = jQuery(selector);
+              for(var i in obj) {
+                  var selector = obj[i];
+                  var elems = jQuery(selector.selector);
                   if(elems && elems.length) {
                     var data = undefined;
-                    if(obj.type == 'field') {
-                      var data = elems[0].value;
+                    if(selector.type == 'field') {
+                      data = elems[0].value;
                     } else {
-                      var data = elems.text();
+                      data = elems.text();
                     }
                     if(data) {
-                      if(obj.dataType == 'number') {
+                      if(selector.dataType == 'number') {
                         data = getAmt(data);
                       }
                       BOOMR.addVar(x, data);
