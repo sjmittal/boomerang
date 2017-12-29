@@ -23,8 +23,8 @@ A plugin beaconing clicked elements back to the server
 	var impl = {
 		start_time: "",
 		click_url: "", //will be the default beacon url,
-    click_tags: [], //array of target tag names (in uppercase) that are allowed
-    click_classes: [], //array of class names for those nodes that are allowed
+        click_tags: [], //array of target tag names (in uppercase) that are allowed
+        click_classes: [], //array of class names for those nodes that are allowed
 		handleEvent: function(event) {
 			if (typeof impl.click_url === "undefined" ) {
 				BOOMR.error("No Beacon URL defined will not send beacon");
@@ -42,39 +42,39 @@ A plugin beaconing clicked elements back to the server
 
 			if(foundClass) {
 				BOOMR.info(target.nodeName + " clicked, will send immediately");
-        data["text"] =  target.innerText || target.value || target.alt || target.src;
-        if(data["text"]) {
-          impl.sendData(data);
-        }
-      }
+                data["text"] =  target.innerText || target.value || target.alt || target.src;
+                if(data["text"]) {
+                  impl.sendData(data);
+                }
+            }
 		},
-    accept: function(node) {
-      var tagName = node.element.toUpperCase();
-      var classList = node["class"];
-      if(this.click_tags.indexOf(tagName) > -1) {
-        for (var i = 0; i < classList.length; i++) {
-          var className = classList[i];
-          if(this.click_classes.indexOf(className) > -1) {
-            return className;
+        accept: function(node) {
+          var tagName = node.element.toUpperCase();
+          var classList = node["class"];
+          if(this.click_tags.indexOf(tagName) > -1) {
+            for (var i = 0; i < classList.length; i++) {
+              var className = classList[i];
+              if(this.click_classes.indexOf(className) > -1) {
+                return className;
+              }
+            }
           }
-        }
-      }
-      return false;
-    },
+          return false;
+        },
 		sendData: function(data) {
-			BOOMR.addVar(data);
+		  BOOMR.addVar(data);
 
-      this.complete = true;
-      
-      if(BOOMR.plugins.RT) {
-        BOOMR.plugins.RT.done(null, "click");
-      } else 	{	
-        BOOMR.sendBeacon();
-      }
+          this.complete = true;
+          
+          if(BOOMR.plugins.RT) {
+            BOOMR.plugins.RT.done(null, "click");
+          } else 	{	
+            BOOMR.sendBeacon();
+          }
 		},
-    clear: function() {
-      BOOMR.removeVar("class", "text", "element", "id");
-    }
+        clear: function() {
+          BOOMR.removeVar("class", "text", "element", "id");
+        }
 	};
 
 	BOOMR.plugins.clicks = {
@@ -84,7 +84,7 @@ A plugin beaconing clicked elements back to the server
 			// This block is only needed if you actually have user configurable properties
 			BOOMR.utils.pluginConfig(impl, config, "clicks", properties);
       
-      BOOMR.subscribe("onbeacon", impl.clear, null, impl);
+            BOOMR.subscribe("onbeacon", impl.clear, null, impl);
 
 			// Other initialisation code here
 			w.addEventListener("click", impl.handleEvent, true);
